@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deployer</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        textarea, input {
+            margin-top: .25em;
+            margin-bottom: 1em;
+            font-family: monospace;
+            display: block;
+            box-sizing: border-box;
+            width: 100%; 
+        }
+    </style>
+</head>
+<body>
+    <h1 id="title">Deploy something</h1>
+    <form>
+        <label for="artifact">Artifact</label>
+        <textarea name="artifact" id="artifact" rows="25" style="resize: vertical;" placeholder="{&#10;    &quot;abi&quot;: [{}],&#10;    &quot;bytecode&quot;: &quot;0x&quot;&#10;}"></textarea>
+        <label for="args">Arguments</label>
+        <input name="args" id="args" type="text" placeholder="[]">
+        <button type="submit" disabled>Deploy</button>
+    </form>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+    <script>
+        function getFormData(form) {
+            const data = new FormData(form);
+            const artifact = data.get("artifact");
+            const args = data.get("args");
+            return { artifact, args };
+        }
+
+        function updateTitle(input) {
+            try {   
+                const { contractName = "something" } = JSON.parse(input);
+                document.getElementById("title").innerText = `Deploy ${contractName}`;
+            } catch (_) {
+                document.getElementById("title").innerText = "Deploy something";
+            }
+        }
+
+        const form = document.querySelector("form");
+        const button = form.querySelector("button");
+        const artifactInput = document.getElementById("artifact");
+        const argsInput = document.getElementById("args");
+
+        try {
+            const base64 = decodeURIComponent(window.location.hash.substr(1));
+            const { artifact, args } = JSON.parse(atob(base64));
+            artifactInput.value = artifact;
+            argsInput.value = args;
+            updateTitle(artifact);
+        } catch (_) {}
+
+        artifactInput.addEventListener("input", (event) => updateTitle(event.currentTarget.value));
+
+        form.addEventListener("change", event => {
+            const data = getFormData(event.currentTarget);
+            const base64 = btoa(JSON.stringify(data));
+            window.location.hash = `#${encodeURIComponent(base64)}`;
+        });
+
+        const disableForm = event => {
+            event.preventDefault();
+        };
+
+        form.addEventListener("submit", disableForm);
+
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        provider.send("eth_requestAccounts", []).then(() => {
+            const signer = provider.getSigner();
+
+            button.disabled = false;
+            form.removeEventListener(form, disableForm);
+
+            form.addEventListener("submit", event => {
+                event.preventDefault();
+                const { artifact, args } = getFormData(event.currentTarget);
+                const { abi, bytecode } = JSON.parse(artifact);
+                const factory = new ethers.ContractFactory(abi, bytecode, signer);
+                button.disabled = true;
+                factory.deploy(...JSON.parse(args)).then(contract => {
+                    console.log(contract);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
