@@ -11,13 +11,13 @@
     <h1 id="title">Interact with something</h1>
     <form>
         <label for="address">Address</label>
-        <input name="address" id="address" type="text" placeholder="0x">
+        <input autocomplete="false" name="address" id="address" type="text" placeholder="0x">
         <label for="artifact">Artifact</label>
-        <textarea name="artifact" id="artifact" rows="25" style="resize: vertical;" placeholder="{&#10;    &quot;abi&quot;: [{}],&#10;    &quot;bytecode&quot;: &quot;0x&quot;&#10;}"></textarea>
+        <textarea autocomplete="false" name="artifact" id="artifact" rows="25" style="resize: vertical;" placeholder="{&#10;    &quot;abi&quot;: [{}],&#10;    &quot;bytecode&quot;: &quot;0x&quot;&#10;}"></textarea>
         <label for="method">Method</label>
-        <input name="method" id="method" type="text">
+        <input autocomplete="false" name="method" id="method" type="text">
         <label for="args">Arguments</label>
-        <input name="args" id="args" type="text" placeholder="[]">
+        <input autocomplete="false" name="args" id="args" type="text" placeholder="[]">
         <button type="submit" disabled>Deploy</button>
     </form>
     <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
