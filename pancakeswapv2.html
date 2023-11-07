@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PancakeSwap v2 Price Extract</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            font-size: 16px;
+        }
+
+        input {
+            display: block;
+            width: 64ch;
+        }
+
+        label {
+            display: block;
+            padding-bottom: 1rem;
+        }
+
+        textarea {
+            width: 100%;
+            resize: vertical;
+            overflow-x: scroll;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>PancakeSwap v2 Price Extract</h1>
+    <form id="form">
+        <label>
+            Token A
+            <input id="token-a" name="token" type="text" pattern="0x[a-fA-F0-9]{40}"
+                placeholder="0x0000000000000000000000000000000000000000" required>
+        </label>
+        <label>
+            Token B
+            <input id="token-b" name="token" type="text" pattern="0x[a-fA-F0-9]{40}"
+                placeholder="0x0000000000000000000000000000000000000000" required>
+        </label>
+        <label>
+            Start Block Number
+            <input type="number" name="start-block" min="1" step="1" required>
+        </label>
+        <label>
+            End Block Number (optional, last block by default)
+            <input type="number" name="end-block" min="1" step="1">
+        </label>
+        <button type="submit" id="submit">Extract</button>
+    </form>
+    <hr>
+    <div id="status">Loading...</div>
+    <textarea readonly id="output" rows="10"></textarea>
+    <script type="module">
+        import { ethers, Contract, JsonRpcProvider, formatUnits } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.min.js";
+
+        const FACTORY_ADDRESS = "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73";
+        const BLOCKS = 3000n;
+
+        const status = document.getElementById("status");
+        const output = document.getElementById("output");
+        const form = document.getElementById("form");
+        const submit = document.getElementById("submit");
+        const tokenA = document.getElementById("token-a");
+        const tokenB = document.getElementById("token-b");
+
+        const ERC20ABI = [{
+            constant: true,
+            inputs: [],
+            name: "decimals",
+            outputs: [
+                {
+                    internalType: "uint8",
+                    name: "",
+                    type: "uint8"
+                }
+            ],
+            payable: false,
+            stateMutability: "view",
+            type: "function"
+        }, {
+            constant: true,
+            inputs: [],
+            name: "symbol",
+            outputs: [
+                {
+                    name: "",
+                    type: "string"
+                }
+            ],
+            payable: false,
+            stateMutability: "view",
+            type: "function"
+        }];
+
+        const FactoryABI = [{
+            constant: true,
+            inputs: [
+                {
+                    internalType: "address",
+                    name: "",
+                    type: "address"
+                },
+                {
+                    internalType: "address",
+                    name: "",
+                    type: "address"
+                }
+            ],
+            name: "getPair",
+            outputs: [
+                {
+                    internalType: "address",
+                    name: "",
+                    type: "address"
+                }
+            ],
+            payable: false,
+            stateMutability: "view",
+            type: "function"
+        }];
+
+        const PairABI = [{
+            anonymous: false,
+            inputs: [
+                {
+                    indexed: false,
+                    internalType: "uint112",
+                    name: "reserve0",
+                    type: "uint112"
+                },
+                {
+                    indexed: false,
+                    internalType: "uint112",
+                    name: "reserve1",
+                    type: "uint112"
+                }
+            ],
+            name: "Sync",
+            type: "event"
+        }, {
+            constant: true,
+            inputs: [],
+            name: "token0",
+            outputs: [
+                {
+                    internalType: "address",
+                    name: "",
+                    type: "address"
+                }
+            ],
+            payable: false,
+            stateMutability: "view",
+            type: "function"
+        }, {
+            constant: true,
+            inputs: [],
+            name: "token1",
+            outputs: [
+                {
+                    internalType: "address",
+                    name: "",
+                    type: "address"
+                }
+            ],
+            payable: false,
+            stateMutability: "view",
+            type: "function"
+        }];
+
+        const provider = new JsonRpcProvider("https://bscrpc.com");
+        const blockTimestamps = new Map();
+        async function getBlockTimestamp(blockNumber) {
+            if (blockTimestamps.has(blockNumber)) return blockTimestamps.get(blockNumber);
+            const { timestamp } = await provider.getBlock(blockNumber);
+            blockTimestamps.set(blockNumber, timestamp * 1000);
+            return timestamp * 1000;
+        }
+
+        async function extract(tokens, startBlock, endBlock) {
+            console.log(tokens, startBlock, endBlock);
+            endBlock = BigInt(endBlock || await provider.getBlockNumber());
+            console.log(tokens, startBlock, endBlock);
+            const factory = await new Contract(FACTORY_ADDRESS, FactoryABI, provider);
+            const pair = new Contract(await factory.getPair(...tokens), PairABI, provider);
+            const token0Address = await pair.token0();
+            const token1Address = await pair.token1();
+            const token0 = new Contract(token0Address, ERC20ABI, provider);
+            const token1 = new Contract(token1Address, ERC20ABI, provider);
+            const token0Decimals = Number(await token0.decimals());
+            const token1Decimals = Number(await token1.decimals());
+            const token0Symbol = await token0.symbol();
+            const token1Symbol = await token1.symbol();
+
+            tokenA.value = `(${token0Address}) ${token0Symbol}`;
+            tokenB.value = `(${token1Address}) ${token1Symbol}`;
+            output.value = `date\tblock_number\tlog_index\ttransaction_index\ttransaction_hash\treserves (${token0Symbol})\treserves (${token1Symbol})\tapprox_price`;
+
+            for (let fromBlock = startBlock; fromBlock < endBlock; fromBlock += BLOCKS) {
+                const toBlock = fromBlock + BLOCKS;
+
+                status.innerText = `Extracting blocks ${fromBlock}-${toBlock}/${endBlock}...`;
+
+                const reserves = await pair.queryFilter("Sync", fromBlock, toBlock);
+
+                for (const { blockNumber, index, transactionIndex, transactionHash, args } of reserves)
+                    output.value += `\n${new Date(await getBlockTimestamp(blockNumber)).toISOString()}\t${blockNumber}\t${index}\t${transactionIndex}\t${transactionHash}\t${formatUnits(args.reserve0, token0Decimals)}\t${formatUnits(args.reserve1, token1Decimals)}\t${(Number(args.reserve1) / Number(args.reserve0) / Math.pow(10, token1Decimals - token0Decimals))}`
+                    
+            }
+        }
+
+        form.addEventListener("submit", event => {
+            event.preventDefault();
+
+            status.innerText = "Extracting...";
+
+            const data = new FormData(event.currentTarget);
+            const tokens = data.getAll("token");
+            const startBlock = BigInt(data.get("start-block"));
+            const endBlock = data.get("end-block");
+
+            extract(tokens, startBlock, endBlock).then(() => {
+                status.innerText = "Done!"
+            }).catch(error => {
+                console.log("extract", error);
+                status.innerText = "Error, check console for more details";
+            });
+        });
+
+        status.innerText = "Ready";
+    </script>
+</body>
+
+</html>
